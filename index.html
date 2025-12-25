@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Economía Familiar - Control</title>
+    <style>
+        :root { --blue: #0056b3; --green: #28a745; --red: #dc3545; --gray: #6c757d; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4f7f6; color: #333; }
+        
+        .header-blue { 
+            background: var(--blue); color: white; padding: 40px 20px; 
+            text-align: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+        }
+        .total-monto { font-size: 3.2rem; font-weight: bold; margin: 5px 0; }
+        .diario-monto { font-size: 1.2rem; background: rgba(255,255,255,0.2); padding: 6px 15px; border-radius: 20px; display: inline-block; }
+        .config-btn { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 1.8rem; transition: 0.3s; }
+
+        .container { padding: 20px; max-width: 500px; margin: auto; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        .input-group { display: flex; flex-direction: column; gap: 12px; }
+        input, select, button { padding: 14px; border-radius: 10px; border: 1px solid #ddd; font-size: 1rem; outline: none; }
+        button.btn-add { background: var(--green); color: white; border: none; font-weight: bold; cursor: pointer; }
+        
+        .gasto-item { 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 0; border-bottom: 1px solid #eee;
+        }
+        .gasto-info { display: flex; flex-direction: column; }
+        .gasto-fecha { font-size: 0.75rem; color: #888; }
+        .gasto-monto { color: var(--red); font-weight: bold; }
+        .edit-icon { cursor: pointer; margin-left: 10px; font-size: 1.1rem; }
+
+        #loading { font-size: 0.9rem; margin-bottom: 10px; display: block; opacity: 0.8; }
+        .btn-footer { padding: 10px; font-size: 0.9rem; margin-top: 10px; width: 100%; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header-blue">
+        <div class="config-btn" onclick="editarPresupuesto()">⚙️</div>
+        <span id="loading">Sincronizando...</span>
+        <div class="total-monto" id="totalMonto">$0</div>
+        <div class="diario-monto" id="diarioMonto">Diario: $0</div>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <div class="input-group">
+                <input type="number" id="montoGasto" placeholder="Monto gastado $">
+                <select id="tiendaSelect" onchange="toggleOtros(this)">
+                    <option value="Juanka">Juanka</option>
+                    <option value="Don Lucio">Don Lucio</option>
+                    <option value="Boedo">Boedo</option>
+                    <option value="Huevos Belgrano">Huevos Belgrano</option>
+                    <option value="Disfruta">Disfruta</option>
+                    <option value="Anonima">Anonima</option>
+                    <option value="Diarco">Diarco</option>
+                    <option value="Pastoriza">Pastoriza</option>
+                    <option value="De la costa">De la costa</option>
+                    <option value="Otros">Otros (Escribir...)</option>
+                </select>
+                <input type="text" id="otroTienda" placeholder="¿Qué almacén?" style="display:none;">
+                <button class="btn-add" onclick="agregarGasto()">+ INGRESAR GASTO</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top:0">Historial</h3>
+            <div id="listaGastos">Cargando movimientos...</div>
+            <hr style="border:0; border-top:1px solid #eee; margin: 20px 0;">
+            <button class="btn-footer" style="background: var(--gray);" onclick="exportarExcel()">DESCARGAR EXCEL (CSV)</button>
+            <button class="btn-footer" style="background: var(--red);" onclick="cerrarMesYReiniciar()">CERRAR MES Y REINICIAR</button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://sheetdb.io/api/v1/f3gackja99xb4'; 
+        let todosLosGastos = [];
+
+        async function cargarDatos() {
+            try {
+                const resG = await fetch(API_URL);
+                todosLosGastos = await resG.json();
+                
+                const resP = await fetch(`${API_URL}?sheet=Hoja2`);
+                const presuData = await resP.json();
+                const presuInicial = parseFloat(presuData[0].presupuesto);
+
+                const totalGastado = todosLosGastos.reduce((acc, g) => acc + parseFloat(g.monto || 0), 0);
+                const saldoActual = presuInicial - totalGastado;
+
+                const hoy = new Date();
+                const diasRestantes = (new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate() - hoy.getDate()) + 1;
+
+                document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
+                document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
+                document.getElementById('loading').innerText = "Actualizado ahora";
+                
+                renderHistorial(todosLosGastos);
+            } catch (e) { document.getElementById('loading').innerText = "Error de conexión"; }
+        }
+
+        async function agregarGasto() {
+            const monto = document.getElementById('montoGasto').value;
+            let tienda = document.getElementById('tiendaSelect').value;
+            if(tienda === 'Otros') tienda = document.getElementById('otroTienda').value;
+
+            if(!monto || !tienda) return alert("Completa los datos");
+
+            document.getElementById('loading').innerText = "Guardando...";
+            await fetch(API_URL, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ data: [{
+                    fecha: new Date().toLocaleDateString('es-AR'),
+                    monto: monto,
+                    tienda: tienda,
+                    mes: new Date().getMonth() + 1
+                }]})
+            });
+            location.reload();
+        }
+
+        async function editarGasto(tiendaOriginal, montoOriginal) {
+            const nuevoM = prompt("Nuevo monto:", montoOriginal);
+            const nuevaT = prompt("Nuevo lugar:", tiendaOriginal);
+            if(!nuevoM || !nuevaT) return;
+
+            document.getElementById('loading').innerText = "Editando...";
+            await fetch(`${API_URL}/tienda/${tiendaOriginal}`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ data: { monto: nuevoM, tienda: nuevaT } })
+            });
+            location.reload();
+        }
+
+        async function editarPresupuesto() {
+            const nuevoP = prompt("Nuevo presupuesto total del mes:");
+            if(nuevoP) {
+                await fetch(`${API_URL}/presupuesto/ALL?sheet=Hoja2`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ data: { presupuesto: nuevoP } })
+                });
+                location.reload();
+            }
+        }
+
+        function renderHistorial(datos) {
+            const div = document.getElementById('listaGastos');
+            div.innerHTML = '';
+            datos.reverse().slice(0, 15).forEach(g => {
+                div.innerHTML += `
+                    <div class="gasto-item">
+                        <div class="gasto-info">
+                            <strong>${g.tienda}</strong>
+                            <span class="gasto-fecha">${g.fecha}</span>
+                        </div>
+                        <div style="display:flex; align-items:center;">
+                            <span class="gasto-monto">-$${parseFloat(g.monto).toLocaleString()}</span>
+                            <span class="edit-icon" onclick="editarGasto('${g.tienda}', '${g.monto}')">✏️</span>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function exportarExcel() {
+            if(todosLosGastos.length === 0) return alert("No hay datos");
+            let csv = "\ufeffFecha,Monto,Tienda,Mes\n";
+            todosLosGastos.forEach(g => { csv += `${g.fecha},${g.monto},${g.tienda},${g.mes}\n`; });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `Gastos_Resumen.csv`;
+            link.click();
+        }
+
+        async function cerrarMesYReiniciar() {
+            if(confirm("Se descargará el Excel y se borrará el historial. ¿Continuar?")) {
+                exportarExcel();
+                document.getElementById('loading').innerText = "Limpiando...";
+                await fetch(`${API_URL}/all`, { method: 'DELETE' });
+                location.reload();
+            }
+        }
+
+        function toggleOtros(sel) { document.getElementById('otroTienda').style.display = (sel.value === 'Otros') ? 'block' : 'none'; }
+        cargarDatos();
+    </script>
+</body>
+</html>
