@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Economía Familiar - Control</title>
+    <title>Economía Familiar</title>
     <style>
         :root { --blue: #0056b3; --green: #28a745; --red: #dc3545; --gray: #6c757d; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4f7f6; color: #333; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #f4f7f6; color: #333; }
         
         .header-blue { 
             background: var(--blue); color: white; padding: 40px 20px; 
             text-align: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
         }
-        .total-monto { font-size: 3.2rem; font-weight: bold; margin: 5px 0; }
+        .total-monto { font-size: 3rem; font-weight: bold; margin: 5px 0; }
         .diario-monto { font-size: 1.2rem; background: rgba(255,255,255,0.2); padding: 6px 15px; border-radius: 20px; display: inline-block; }
         .config-btn { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 1.8rem; transition: 0.3s; }
 
@@ -30,17 +30,17 @@
         .gasto-info { display: flex; flex-direction: column; }
         .gasto-fecha { font-size: 0.75rem; color: #888; }
         .gasto-monto { color: var(--red); font-weight: bold; }
-        .edit-icon { cursor: pointer; margin-left: 10px; font-size: 1.1rem; }
+        .edit-icon { cursor: pointer; margin-left: 10px; font-size: 1.1rem; opacity: 0.7; }
 
-        #loading { font-size: 0.9rem; margin-bottom: 10px; display: block; opacity: 0.8; }
-        .btn-footer { padding: 10px; font-size: 0.9rem; margin-top: 10px; width: 100%; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; }
+        #loading { font-size: 0.9rem; margin-bottom: 10px; display: block; opacity: 0.9; font-weight: 300; }
+        .btn-footer { padding: 12px; font-size: 0.9rem; margin-top: 10px; width: 100%; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div class="header-blue">
         <div class="config-btn" onclick="editarPresupuesto()">⚙️</div>
-        <span id="loading">Sincronizando...</span>
+        <span id="loading">Iniciando conexión...</span>
         <div class="total-monto" id="totalMonto">$0</div>
         <div class="diario-monto" id="diarioMonto">Diario: $0</div>
     </div>
@@ -62,15 +62,15 @@
                     <option value="Otros">Otros (Escribir...)</option>
                 </select>
                 <input type="text" id="otroTienda" placeholder="¿Qué almacén?" style="display:none;">
-                <button class="btn-add" onclick="agregarGasto()">+ INGRESAR GASTO</button>
+                <button class="btn-add" onclick="agregarGasto()">+ REGISTRAR GASTO</button>
             </div>
         </div>
 
         <div class="card">
-            <h3 style="margin-top:0">Historial</h3>
-            <div id="listaGastos">Cargando movimientos...</div>
+            <h3 style="margin-top:0">Últimos Gastos</h3>
+            <div id="listaGastos">Cargando historial...</div>
             <hr style="border:0; border-top:1px solid #eee; margin: 20px 0;">
-            <button class="btn-footer" style="background: var(--gray);" onclick="exportarExcel()">DESCARGAR EXCEL (CSV)</button>
+            <button class="btn-footer" style="background: var(--gray);" onclick="exportarExcel()">DESCARGAR REPORTE (CSV)</button>
             <button class="btn-footer" style="background: var(--red);" onclick="cerrarMesYReiniciar()">CERRAR MES Y REINICIAR</button>
         </div>
     </div>
@@ -81,25 +81,41 @@
 
         async function cargarDatos() {
             try {
-                const resG = await fetch(API_URL);
-                todosLosGastos = await resG.json();
+                document.getElementById('loading').innerText = "Sincronizando con Excel...";
                 
+                // Cargar Gastos (Hoja1)
+                const resG = await fetch(`${API_URL}?sheet=Hoja1`);
+                const datosG = await resG.json();
+                todosLosGastos = Array.isArray(datosG) ? datosG : [];
+                
+                // Cargar Presupuesto (Hoja2)
                 const resP = await fetch(`${API_URL}?sheet=Hoja2`);
                 const presuData = await resP.json();
-                const presuInicial = parseFloat(presuData[0].presupuesto);
 
-                const totalGastado = todosLosGastos.reduce((acc, g) => acc + parseFloat(g.monto || 0), 0);
-                const saldoActual = presuInicial - totalGastado;
+                if (presuData && presuData.length > 0) {
+                    const presuInicial = parseFloat(presuData[0].presupuesto) || 0;
+                    
+                    const totalGastado = todosLosGastos.reduce((acc, g) => {
+                        const valor = parseFloat(String(g.monto).replace(',', '.'));
+                        return acc + (isNaN(valor) ? 0 : valor);
+                    }, 0);
 
-                const hoy = new Date();
-                const diasRestantes = (new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate() - hoy.getDate()) + 1;
+                    const saldoActual = presuInicial - totalGastado;
+                    const hoy = new Date();
+                    const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+                    const diasRestantes = (ultimoDia - hoy.getDate()) + 1;
 
-                document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
-                document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
-                document.getElementById('loading').innerText = "Actualizado ahora";
-                
-                renderHistorial(todosLosGastos);
-            } catch (e) { document.getElementById('loading').innerText = "Error de conexión"; }
+                    document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
+                    document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
+                    document.getElementById('loading').innerText = "Conectado";
+                    
+                    renderHistorial(todosLosGastos);
+                } else {
+                    document.getElementById('loading').innerText = "Error: Configura Hoja2";
+                }
+            } catch (e) { 
+                document.getElementById('loading').innerText = "Error de lectura"; 
+            }
         }
 
         async function agregarGasto() {
@@ -107,10 +123,10 @@
             let tienda = document.getElementById('tiendaSelect').value;
             if(tienda === 'Otros') tienda = document.getElementById('otroTienda').value;
 
-            if(!monto || !tienda) return alert("Completa los datos");
+            if(!monto || !tienda) return alert("Faltan datos");
 
             document.getElementById('loading').innerText = "Guardando...";
-            await fetch(API_URL, {
+            await fetch(`${API_URL}?sheet=Hoja1`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ data: [{
@@ -123,23 +139,33 @@
             location.reload();
         }
 
-        async function editarGasto(tiendaOriginal, montoOriginal) {
-            const nuevoM = prompt("Nuevo monto:", montoOriginal);
-            const nuevaT = prompt("Nuevo lugar:", tiendaOriginal);
-            if(!nuevoM || !nuevaT) return;
-
-            document.getElementById('loading').innerText = "Editando...";
-            await fetch(`${API_URL}/tienda/${tiendaOriginal}`, {
-                method: 'PATCH',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ data: { monto: nuevoM, tienda: nuevaT } })
+        function renderHistorial(datos) {
+            const div = document.getElementById('listaGastos');
+            if (datos.length === 0) {
+                div.innerHTML = "<p style='color:#888'>No hay movimientos</p>";
+                return;
+            }
+            div.innerHTML = '';
+            [...datos].reverse().slice(0, 15).forEach(g => {
+                const m = parseFloat(String(g.monto).replace(',', '.')) || 0;
+                div.innerHTML += `
+                    <div class="gasto-item">
+                        <div class="gasto-info">
+                            <strong>${g.tienda}</strong>
+                            <span class="gasto-fecha">${g.fecha}</span>
+                        </div>
+                        <div style="display:flex; align-items:center;">
+                            <span class="gasto-monto">-$${m.toLocaleString('es-AR')}</span>
+                            <span class="edit-icon" onclick="editarGasto('${g.tienda}', '${g.monto}')">✏️</span>
+                        </div>
+                    </div>`;
             });
-            location.reload();
         }
 
         async function editarPresupuesto() {
-            const nuevoP = prompt("Nuevo presupuesto total del mes:");
+            const nuevoP = prompt("Nuevo presupuesto mensual:");
             if(nuevoP) {
+                document.getElementById('loading').innerText = "Actualizando...";
                 await fetch(`${API_URL}/presupuesto/ALL?sheet=Hoja2`, {
                     method: 'PATCH',
                     headers: {'Content-Type': 'application/json'},
@@ -149,22 +175,18 @@
             }
         }
 
-        function renderHistorial(datos) {
-            const div = document.getElementById('listaGastos');
-            div.innerHTML = '';
-            datos.reverse().slice(0, 15).forEach(g => {
-                div.innerHTML += `
-                    <div class="gasto-item">
-                        <div class="gasto-info">
-                            <strong>${g.tienda}</strong>
-                            <span class="gasto-fecha">${g.fecha}</span>
-                        </div>
-                        <div style="display:flex; align-items:center;">
-                            <span class="gasto-monto">-$${parseFloat(g.monto).toLocaleString()}</span>
-                            <span class="edit-icon" onclick="editarGasto('${g.tienda}', '${g.monto}')">✏️</span>
-                        </div>
-                    </div>`;
+        async function editarGasto(tiendaOrig, montoOrig) {
+            const nuevoM = prompt("Monto nuevo:", montoOrig);
+            const nuevaT = prompt("Lugar nuevo:", tiendaOrig);
+            if(!nuevoM || !nuevaT) return;
+
+            document.getElementById('loading').innerText = "Editando...";
+            await fetch(`${API_URL}/tienda/${tiendaOrig}?sheet=Hoja1`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ data: { monto: nuevoM, tienda: nuevaT } })
             });
+            location.reload();
         }
 
         function exportarExcel() {
@@ -174,20 +196,21 @@
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `Gastos_Resumen.csv`;
+            link.download = `Resumen_Gastos.csv`;
             link.click();
         }
 
         async function cerrarMesYReiniciar() {
-            if(confirm("Se descargará el Excel y se borrará el historial. ¿Continuar?")) {
+            if(confirm("Se bajará el reporte y se borrarán los gastos. ¿Continuar?")) {
                 exportarExcel();
-                document.getElementById('loading').innerText = "Limpiando...";
-                await fetch(`${API_URL}/all`, { method: 'DELETE' });
+                document.getElementById('loading').innerText = "Vaciando...";
+                await fetch(`${API_URL}/all?sheet=Hoja1`, { method: 'DELETE' });
                 location.reload();
             }
         }
 
         function toggleOtros(sel) { document.getElementById('otroTienda').style.display = (sel.value === 'Otros') ? 'block' : 'none'; }
+        
         cargarDatos();
     </script>
 </body>
