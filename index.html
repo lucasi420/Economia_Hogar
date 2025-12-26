@@ -137,7 +137,7 @@
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ data: [{
-                    fecha: new Date().toLocaleDateString('es-AR'),
+                    fecha: "'" + new Date().toLocaleDateString('es-AR'),
                     monto: monto,
                     tienda: tienda,
                     mes: new Date().getMonth() + 1
