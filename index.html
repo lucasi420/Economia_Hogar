@@ -163,17 +163,35 @@
         }
 
         async function editarPresupuesto() {
-            const nuevoP = prompt("Nuevo presupuesto mensual:");
-            if(nuevoP) {
-                document.getElementById('loading').innerText = "Actualizando...";
-                await fetch(`${API_URL}/presupuesto/ALL?sheet=Hoja2`, {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ data: { presupuesto: nuevoP } })
-                });
+    const nuevoP = prompt("Nuevo presupuesto mensual (solo números):");
+    if (nuevoP) {
+        document.getElementById('loading').innerText = "Actualizando presupuesto...";
+        
+        // El '/0' le dice a SheetDB: "Andá a la primera fila de datos" (Celda A2)
+        // Agregamos ?sheet=Hoja2 para que no se confunda de pestaña
+        const urlUpdate = `${API_URL}/0?sheet=Hoja2`; 
+        
+        try {
+            const res = await fetch(urlUpdate, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    data: { presupuesto: nuevoP }
+                })
+            });
+
+            if (res.ok) {
+                alert("¡Presupuesto actualizado!");
                 location.reload();
+            } else {
+                alert("Error al guardar. Revisá que A1 diga 'presupuesto' en minúsculas.");
             }
+        } catch (e) {
+            alert("Error de red o conexión.");
         }
+    }
+}
+
 
         async function editarGasto(tiendaOrig, montoOrig) {
             const nuevoM = prompt("Monto nuevo:", montoOrig);
