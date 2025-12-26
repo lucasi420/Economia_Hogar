@@ -80,43 +80,50 @@
         let todosLosGastos = [];
 
         async function cargarDatos() {
-            try {
-                document.getElementById('loading').innerText = "Sincronizando con Excel...";
-                
-                // Cargar Gastos (Hoja1)
-                const resG = await fetch(`${API_URL}?sheet=Hoja1`);
-                const datosG = await resG.json();
-                todosLosGastos = Array.isArray(datosG) ? datosG : [];
-                
-                // Cargar Presupuesto (Hoja2)
-                const resP = await fetch(`${API_URL}?sheet=Hoja2`);
-                const presuData = await resP.json();
+    try {
+        document.getElementById('loading').innerText = "Sincronizando con Excel...";
+        
+        // 1. Cargar Gastos (Hoja1)
+        const resG = await fetch(`${API_URL}?sheet=Hoja1`);
+        const datosG = await resG.json();
+        todosLosGastos = Array.isArray(datosG) ? datosG : [];
+        
+        // 2. Cargar Presupuesto (Hoja2)
+        const resP = await fetch(`${API_URL}?sheet=Hoja2`);
+        const presuData = await resP.json();
 
-                if (presuData && presuData.length > 0) {
-                    const presuInicial = parseFloat(presuData[0].presupuesto) || 0;
-                    
-                    const totalGastado = todosLosGastos.reduce((acc, g) => {
-                        const valor = parseFloat(String(g.monto).replace(',', '.'));
-                        return acc + (isNaN(valor) ? 0 : valor);
-                    }, 0);
+        if (presuData && presuData.length > 0) {
+            // Buscamos el valor en la primera fila de la Hoja2
+            const presuInicial = parseFloat(String(presuData[0].presupuesto).replace(',', '.')) || 0;
+            
+            // Calcular total gastado
+            const totalGastado = todosLosGastos.reduce((acc, g) => {
+                const valor = parseFloat(String(g.monto).replace(',', '.'));
+                return acc + (isNaN(valor) ? 0 : valor);
+            }, 0);
 
-                    const saldoActual = presuInicial - totalGastado;
-                    const hoy = new Date();
-                    const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-                    const diasRestantes = (ultimoDia - hoy.getDate()) + 1;
+            const saldoActual = presuInicial - totalGastado;
+            
+            // Cálculo de días restantes
+            const hoy = new Date();
+            const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+            const diasRestantes = (ultimoDia - hoy.getDate()) + 1;
 
-                    document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
-                    document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
-                    document.getElementById('loading').innerText = "Conectado";
-                    
-                    renderHistorial(todosLosGastos);
-                } else {
-                    document.getElementById('loading').innerText = "Error: Configura Hoja2";
-                }
-            } catch (e) { 
-                document.getElementById('loading').innerText = "Error de lectura"; 
-            }
+            // Mostrar en pantalla
+            document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
+            document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
+            document.getElementById('loading').innerText = "Conectado";
+            
+            renderHistorial(todosLosGastos);
+        } else {
+            document.getElementById('loading').innerText = "Error: Hoja2 vacía";
         }
+    } catch (e) { 
+        console.error(e);
+        document.getElementById('loading').innerText = "Error de lectura"; 
+    }
+}
+
 
         async function agregarGasto() {
             const monto = document.getElementById('montoGasto').value;
@@ -166,40 +173,31 @@
     const nuevoP = prompt("Nuevo presupuesto mensual (solo números):");
     
     if (nuevoP) {
-        document.getElementById('loading').innerText = "Actualizando celda A2...";
+        document.getElementById('loading').innerText = "Actualizando...";
         
-        // Usamos /0 para decirle a SheetDB: "Editá la primera fila de datos que encuentres"
-        // Agregamos ?sheet=Hoja2 para que sepa que es en esa pestaña
-        const urlUpdate = `${API_URL}/0?sheet=Hoja2`; 
+        // Buscamos la fila donde el 'id' es '1' en la 'Hoja2'
+        const urlUpdate = `${API_URL}/id/1?sheet=Hoja2`; 
         
         try {
             const res = await fetch(urlUpdate, {
                 method: 'PATCH',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     data: { "presupuesto": nuevoP }
                 })
             });
 
-            const resultado = await res.json();
-
             if (res.ok) {
-                alert("¡Presupuesto actualizado en Excel!");
+                alert("¡Presupuesto actualizado!");
                 location.reload();
             } else {
-                console.log("Error de API:", resultado);
-                alert("Error al guardar. Asegúrate de que A1 diga exactamente: presupuesto");
+                alert("Error: Asegúrate de que A1 sea 'id' y B1 'presupuesto'");
             }
         } catch (e) {
-            console.error("Error de red:", e);
-            alert("Error de conexión al intentar escribir.");
+            alert("Error de conexión.");
         }
     }
 }
-
 
 
         async function editarGasto(tiendaOrig, montoOrig) {
