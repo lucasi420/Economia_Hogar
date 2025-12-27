@@ -30,8 +30,8 @@
         .gasto-info { display: flex; flex-direction: column; }
         .gasto-fecha { font-size: 0.75rem; color: #888; }
         .gasto-monto { color: var(--red); font-weight: bold; }
-        .delete-icon { cursor: pointer; margin-left: 15px; font-size: 1.1rem; opacity: 0.6; transition: 0.2s; }
-        .delete-icon:hover { opacity: 1; color: var(--red); }
+        .delete-icon { cursor: pointer; margin-left: 15px; font-size: 1.1rem; opacity: 0.6; transition: 0.2s; padding: 5px; }
+        .delete-icon:hover { opacity: 1; color: var(--red); background: #ffeeee; border-radius: 50%; }
 
         #loading { font-size: 0.9rem; margin-bottom: 10px; display: block; opacity: 0.9; font-weight: 300; }
         .btn-footer { padding: 12px; font-size: 0.9rem; margin-top: 10px; width: 100%; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; }
@@ -82,8 +82,7 @@
 
         async function cargarDatos() {
             try {
-                document.getElementById('loading').innerText = "Sincronizando con Excel...";
-
+                document.getElementById('loading').innerText = "Sincronizando...";
                 const resG = await fetch(`${API_URL}?sheet=Hoja1`);
                 const datosG = await resG.json();
                 todosLosGastos = Array.isArray(datosG) ? datosG : [];
@@ -104,14 +103,12 @@
                     const diasRestantes = (ultimoDia - hoy.getDate()) + 1;
 
                     document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
-                    document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
+                    document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / (diasRestantes || 1)).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
                     document.getElementById('loading').innerText = "Conectado";
-
                     renderHistorial(todosLosGastos);
                 }
             } catch (e) { 
-                console.error(e);
-                document.getElementById('loading').innerText = "Error de lectura"; 
+                document.getElementById('loading').innerText = "Error de carga"; 
             }
         }
 
@@ -119,7 +116,6 @@
             const monto = document.getElementById('montoGasto').value;
             let tienda = document.getElementById('tiendaSelect').value;
             if(tienda === 'Otros') tienda = document.getElementById('otroTienda').value;
-
             if(!monto || !tienda) return alert("Faltan datos");
 
             document.getElementById('loading').innerText = "Guardando...";
@@ -127,7 +123,7 @@
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ data: [{
-                    fecha: "'" + new Date().toLocaleDateString('es-AR'),
+                    fecha: new Date().toLocaleDateString('es-AR'),
                     monto: monto,
                     tienda: tienda,
                     mes: new Date().getMonth() + 1
@@ -145,6 +141,8 @@
             div.innerHTML = '';
             [...datos].reverse().slice(0, 15).forEach(g => {
                 const m = parseFloat(String(g.monto).replace(',', '.')) || 0;
+                // Escapamos las comillas simples de la tienda para evitar errores en el onclick
+                const tiendaEscapada = g.tienda.replace(/'/g, "\\'");
                 div.innerHTML += `
                     <div class="gasto-item">
                         <div class="gasto-info">
@@ -153,28 +151,28 @@
                         </div>
                         <div style="display:flex; align-items:center;">
                             <span class="gasto-monto">-$${m.toLocaleString('es-AR')}</span>
-                            <span class="delete-icon" title="Eliminar" onclick="eliminarGasto('${g.tienda}', '${g.monto}', '${g.fecha}')">🗑️</span>
+                            <span class="delete-icon" onclick="eliminarGasto('${tiendaEscapada}', '${g.monto}', '${g.fecha}')">🗑️</span>
                         </div>
                     </div>`;
             });
         }
 
         async function eliminarGasto(tienda, monto, fecha) {
-            if(!confirm(`¿Borrar gasto de $${monto} en ${tienda}?`)) return;
+            if(!confirm(`¿Borrar el gasto de $${monto} en ${tienda}?`)) return;
 
-            document.getElementById('loading').innerText = "Eliminando...";
-            
-            // Usamos filtros para asegurar que borramos la fila correcta
+            document.getElementById('loading').innerText = "Buscando fila...";
+
             try {
-                const res = await fetch(`${API_URL}/tienda/${tienda}?monto=${monto}&fecha=${fecha}&sheet=Hoja1`, {
-                    method: 'DELETE'
-                });
-                
+                // EXPLICACIÓN: Usamos el endpoint de DELETE con múltiples filtros
+                // SheetDB borrará solo la fila donde coincidan Tienda, Monto Y Fecha.
+                const urlDelete = `${API_URL}/tienda/${tienda}?monto=${monto}&fecha=${fecha}&sheet=Hoja1`;
+
+                const res = await fetch(urlDelete, { method: 'DELETE' });
+
                 if(res.ok) {
                     location.reload();
                 } else {
-                    alert("No se pudo borrar. Intenta de nuevo.");
-                    document.getElementById('loading').innerText = "Error";
+                    alert("Error al intentar borrar.");
                 }
             } catch (e) {
                 alert("Error de conexión.");
@@ -182,11 +180,10 @@
         }
 
         async function editarPresupuesto() {
-            const nuevoP = prompt("Nuevo presupuesto mensual (solo números):");
+            const nuevoP = prompt("Nuevo presupuesto mensual:");
             if (nuevoP) {
                 document.getElementById('loading').innerText = "Actualizando...";
-                const urlUpdate = `${API_URL}/id/1?sheet=Hoja2`; 
-                await fetch(urlUpdate, {
+                await fetch(`${API_URL}/id/1?sheet=Hoja2`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ data: { "presupuesto": nuevoP } })
@@ -207,7 +204,7 @@
         }
 
         async function cerrarMesYReiniciar() {
-            if(confirm("Se bajará el reporte y se borrarán los gastos. ¿Continuar?")) {
+            if(confirm("Se bajará el reporte y se borrarán todos los gastos. ¿Continuar?")) {
                 exportarExcel();
                 document.getElementById('loading').innerText = "Vaciando...";
                 await fetch(`${API_URL}/all?sheet=Hoja1`, { method: 'DELETE' });
