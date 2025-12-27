@@ -30,8 +30,8 @@
         .gasto-info { display: flex; flex-direction: column; }
         .gasto-fecha { font-size: 0.75rem; color: #888; }
         .gasto-monto { color: var(--red); font-weight: bold; }
-        .delete-icon { cursor: pointer; margin-left: 15px; font-size: 1.1rem; opacity: 0.6; transition: 0.2s; padding: 5px; }
-        .delete-icon:hover { opacity: 1; color: var(--red); background: #ffeeee; border-radius: 50%; }
+        .delete-icon { cursor: pointer; margin-left: 15px; font-size: 1.1rem; color: #bbb; transition: 0.2s; padding: 5px; }
+        .delete-icon:hover { color: var(--red); }
 
         #loading { font-size: 0.9rem; margin-bottom: 10px; display: block; opacity: 0.9; font-weight: 300; }
         .btn-footer { padding: 12px; font-size: 0.9rem; margin-top: 10px; width: 100%; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; }
@@ -85,7 +85,9 @@
                 document.getElementById('loading').innerText = "Sincronizando...";
                 const resG = await fetch(`${API_URL}?sheet=Hoja1`);
                 const datosG = await resG.json();
-                todosLosGastos = Array.isArray(datosG) ? datosG : [];
+                
+                // Agregamos el índice real de la fila (SheetDB usa 0 para la fila 2 de Excel)
+                todosLosGastos = Array.isArray(datosG) ? datosG.map((g, index) => ({...g, rowIndex: index})) : [];
 
                 const resP = await fetch(`${API_URL}?sheet=Hoja2`);
                 const presuData = await resP.json();
@@ -139,10 +141,9 @@
                 return;
             }
             div.innerHTML = '';
+            // Invertimos el array para ver lo más nuevo arriba, pero manteniendo el rowIndex correcto
             [...datos].reverse().slice(0, 15).forEach(g => {
                 const m = parseFloat(String(g.monto).replace(',', '.')) || 0;
-                // Escapamos las comillas simples de la tienda para evitar errores en el onclick
-                const tiendaEscapada = g.tienda.replace(/'/g, "\\'");
                 div.innerHTML += `
                     <div class="gasto-item">
                         <div class="gasto-info">
@@ -151,28 +152,29 @@
                         </div>
                         <div style="display:flex; align-items:center;">
                             <span class="gasto-monto">-$${m.toLocaleString('es-AR')}</span>
-                            <span class="delete-icon" onclick="eliminarGasto('${tiendaEscapada}', '${g.monto}', '${g.fecha}')">🗑️</span>
+                            <span class="delete-icon" onclick="eliminarGasto(${g.rowIndex}, '${g.tienda}', ${m})">🗑️</span>
                         </div>
                     </div>`;
             });
         }
 
-        async function eliminarGasto(tienda, monto, fecha) {
-            if(!confirm(`¿Borrar el gasto de $${monto} en ${tienda}?`)) return;
+        async function eliminarGasto(index, tienda, monto) {
+            if(!confirm(`¿Eliminar solo este gasto de $${monto} en ${tienda}?`)) return;
 
-            document.getElementById('loading').innerText = "Buscando fila...";
+            document.getElementById('loading').innerText = "Eliminando fila...";
 
             try {
-                // EXPLICACIÓN: Usamos el endpoint de DELETE con múltiples filtros
-                // SheetDB borrará solo la fila donde coincidan Tienda, Monto Y Fecha.
-                const urlDelete = `${API_URL}/tienda/${tienda}?monto=${monto}&fecha=${fecha}&sheet=Hoja1`;
-
-                const res = await fetch(urlDelete, { method: 'DELETE' });
+                // EXPLICACIÓN: SheetDB permite borrar por índice de fila. 
+                // Esto es 100% preciso y NO borra duplicados en otros lados.
+                const res = await fetch(`${API_URL}/all/${index}?sheet=Hoja1`, {
+                    method: 'DELETE'
+                });
 
                 if(res.ok) {
                     location.reload();
                 } else {
-                    alert("Error al intentar borrar.");
+                    alert("Error al borrar. Intenta recargar la página.");
+                    location.reload();
                 }
             } catch (e) {
                 alert("Error de conexión.");
