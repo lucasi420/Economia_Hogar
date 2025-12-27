@@ -7,7 +7,7 @@
     <style>
         :root { --blue: #0056b3; --green: #28a745; --red: #dc3545; --gray: #6c757d; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #f4f7f6; color: #333; }
-        
+
         .header-blue { 
             background: var(--blue); color: white; padding: 40px 20px; 
             text-align: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
@@ -18,11 +18,11 @@
 
         .container { padding: 20px; max-width: 500px; margin: auto; }
         .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        
+
         .input-group { display: flex; flex-direction: column; gap: 12px; }
         input, select, button { padding: 14px; border-radius: 10px; border: 1px solid #ddd; font-size: 1rem; outline: none; }
         button.btn-add { background: var(--green); color: white; border: none; font-weight: bold; cursor: pointer; }
-        
+
         .gasto-item { 
             display: flex; justify-content: space-between; align-items: center;
             padding: 12px 0; border-bottom: 1px solid #eee;
@@ -30,7 +30,8 @@
         .gasto-info { display: flex; flex-direction: column; }
         .gasto-fecha { font-size: 0.75rem; color: #888; }
         .gasto-monto { color: var(--red); font-weight: bold; }
-        .edit-icon { cursor: pointer; margin-left: 10px; font-size: 1.1rem; opacity: 0.7; }
+        .delete-icon { cursor: pointer; margin-left: 15px; font-size: 1.1rem; opacity: 0.6; transition: 0.2s; }
+        .delete-icon:hover { opacity: 1; color: var(--red); }
 
         #loading { font-size: 0.9rem; margin-bottom: 10px; display: block; opacity: 0.9; font-weight: 300; }
         .btn-footer { padding: 12px; font-size: 0.9rem; margin-top: 10px; width: 100%; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; }
@@ -80,50 +81,39 @@
         let todosLosGastos = [];
 
         async function cargarDatos() {
-    try {
-        document.getElementById('loading').innerText = "Sincronizando con Excel...";
-        
-        // 1. Cargar Gastos (Hoja1)
-        const resG = await fetch(`${API_URL}?sheet=Hoja1`);
-        const datosG = await resG.json();
-        todosLosGastos = Array.isArray(datosG) ? datosG : [];
-        
-        // 2. Cargar Presupuesto (Hoja2)
-        const resP = await fetch(`${API_URL}?sheet=Hoja2`);
-        const presuData = await resP.json();
+            try {
+                document.getElementById('loading').innerText = "Sincronizando con Excel...";
 
-        if (presuData && presuData.length > 0) {
-            // Buscamos el valor en la primera fila de la Hoja2
-            const presuInicial = parseFloat(String(presuData[0].presupuesto).replace(',', '.')) || 0;
-            
-            // Calcular total gastado
-            const totalGastado = todosLosGastos.reduce((acc, g) => {
-                const valor = parseFloat(String(g.monto).replace(',', '.'));
-                return acc + (isNaN(valor) ? 0 : valor);
-            }, 0);
+                const resG = await fetch(`${API_URL}?sheet=Hoja1`);
+                const datosG = await resG.json();
+                todosLosGastos = Array.isArray(datosG) ? datosG : [];
 
-            const saldoActual = presuInicial - totalGastado;
-            
-            // Cálculo de días restantes
-            const hoy = new Date();
-            const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-            const diasRestantes = (ultimoDia - hoy.getDate()) + 1;
+                const resP = await fetch(`${API_URL}?sheet=Hoja2`);
+                const presuData = await resP.json();
 
-            // Mostrar en pantalla
-            document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
-            document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
-            document.getElementById('loading').innerText = "Conectado";
-            
-            renderHistorial(todosLosGastos);
-        } else {
-            document.getElementById('loading').innerText = "Error: Hoja2 vacía";
+                if (presuData && presuData.length > 0) {
+                    const presuInicial = parseFloat(String(presuData[0].presupuesto).replace(',', '.')) || 0;
+                    const totalGastado = todosLosGastos.reduce((acc, g) => {
+                        const valor = parseFloat(String(g.monto).replace(',', '.'));
+                        return acc + (isNaN(valor) ? 0 : valor);
+                    }, 0);
+
+                    const saldoActual = presuInicial - totalGastado;
+                    const hoy = new Date();
+                    const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+                    const diasRestantes = (ultimoDia - hoy.getDate()) + 1;
+
+                    document.getElementById('totalMonto').innerText = `$${saldoActual.toLocaleString('es-AR')}`;
+                    document.getElementById('diarioMonto').innerText = `Diario: $${(saldoActual / diasRestantes).toLocaleString('es-AR', {maximumFractionDigits:0})}`;
+                    document.getElementById('loading').innerText = "Conectado";
+
+                    renderHistorial(todosLosGastos);
+                }
+            } catch (e) { 
+                console.error(e);
+                document.getElementById('loading').innerText = "Error de lectura"; 
+            }
         }
-    } catch (e) { 
-        console.error(e);
-        document.getElementById('loading').innerText = "Error de lectura"; 
-    }
-}
-
 
         async function agregarGasto() {
             const monto = document.getElementById('montoGasto').value;
@@ -163,55 +153,46 @@
                         </div>
                         <div style="display:flex; align-items:center;">
                             <span class="gasto-monto">-$${m.toLocaleString('es-AR')}</span>
-                            <span class="edit-icon" onclick="editarGasto('${g.tienda}', '${g.monto}')">✏️</span>
+                            <span class="delete-icon" title="Eliminar" onclick="eliminarGasto('${g.tienda}', '${g.monto}', '${g.fecha}')">🗑️</span>
                         </div>
                     </div>`;
             });
         }
 
-        async function editarPresupuesto() {
-    const nuevoP = prompt("Nuevo presupuesto mensual (solo números):");
-    
-    if (nuevoP) {
-        document.getElementById('loading').innerText = "Actualizando...";
-        
-        // Buscamos la fila donde el 'id' es '1' en la 'Hoja2'
-        const urlUpdate = `${API_URL}/id/1?sheet=Hoja2`; 
-        
-        try {
-            const res = await fetch(urlUpdate, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    data: { "presupuesto": nuevoP }
-                })
-            });
+        async function eliminarGasto(tienda, monto, fecha) {
+            if(!confirm(`¿Borrar gasto de $${monto} en ${tienda}?`)) return;
 
-            if (res.ok) {
-                alert("¡Presupuesto actualizado!");
-                location.reload();
-            } else {
-                alert("Error: Asegúrate de que A1 sea 'id' y B1 'presupuesto'");
+            document.getElementById('loading').innerText = "Eliminando...";
+            
+            // Usamos filtros para asegurar que borramos la fila correcta
+            try {
+                const res = await fetch(`${API_URL}/tienda/${tienda}?monto=${monto}&fecha=${fecha}&sheet=Hoja1`, {
+                    method: 'DELETE'
+                });
+                
+                if(res.ok) {
+                    location.reload();
+                } else {
+                    alert("No se pudo borrar. Intenta de nuevo.");
+                    document.getElementById('loading').innerText = "Error";
+                }
+            } catch (e) {
+                alert("Error de conexión.");
             }
-        } catch (e) {
-            alert("Error de conexión.");
         }
-    }
-}
 
-
-        async function editarGasto(tiendaOrig, montoOrig) {
-            const nuevoM = prompt("Monto nuevo:", montoOrig);
-            const nuevaT = prompt("Lugar nuevo:", tiendaOrig);
-            if(!nuevoM || !nuevaT) return;
-
-            document.getElementById('loading').innerText = "Editando...";
-            await fetch(`${API_URL}/tienda/${tiendaOrig}?sheet=Hoja1`, {
-                method: 'PATCH',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ data: { monto: nuevoM, tienda: nuevaT } })
-            });
-            location.reload();
+        async function editarPresupuesto() {
+            const nuevoP = prompt("Nuevo presupuesto mensual (solo números):");
+            if (nuevoP) {
+                document.getElementById('loading').innerText = "Actualizando...";
+                const urlUpdate = `${API_URL}/id/1?sheet=Hoja2`; 
+                await fetch(urlUpdate, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: { "presupuesto": nuevoP } })
+                });
+                location.reload();
+            }
         }
 
         function exportarExcel() {
@@ -235,7 +216,7 @@
         }
 
         function toggleOtros(sel) { document.getElementById('otroTienda').style.display = (sel.value === 'Otros') ? 'block' : 'none'; }
-        
+
         cargarDatos();
     </script>
 </body>
