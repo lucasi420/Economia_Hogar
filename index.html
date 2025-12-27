@@ -30,7 +30,7 @@
         .gasto-info { display: flex; flex-direction: column; }
         .gasto-fecha { font-size: 0.75rem; color: #888; }
         .gasto-monto { color: var(--red); font-weight: bold; }
-        .delete-icon { cursor: pointer; margin-left: 15px; font-size: 1.1rem; color: #bbb; transition: 0.2s; padding: 5px; }
+        .delete-icon { cursor: pointer; margin-left: 15px; font-size: 1.2rem; color: #bbb; padding: 5px; }
         .delete-icon:hover { color: var(--red); }
 
         #loading { font-size: 0.9rem; margin-bottom: 10px; display: block; opacity: 0.9; font-weight: 300; }
@@ -41,7 +41,7 @@
 
     <div class="header-blue">
         <div class="config-btn" onclick="editarPresupuesto()">⚙️</div>
-        <span id="loading">Iniciando conexión...</span>
+        <span id="loading">Conectando...</span>
         <div class="total-monto" id="totalMonto">$0</div>
         <div class="diario-monto" id="diarioMonto">Diario: $0</div>
     </div>
@@ -69,7 +69,7 @@
 
         <div class="card">
             <h3 style="margin-top:0">Últimos Gastos</h3>
-            <div id="listaGastos">Cargando historial...</div>
+            <div id="listaGastos">Cargando...</div>
             <hr style="border:0; border-top:1px solid #eee; margin: 20px 0;">
             <button class="btn-footer" style="background: var(--gray);" onclick="exportarExcel()">DESCARGAR REPORTE (CSV)</button>
             <button class="btn-footer" style="background: var(--red);" onclick="cerrarMesYReiniciar()">CERRAR MES Y REINICIAR</button>
@@ -82,24 +82,17 @@
 
         async function cargarDatos() {
             try {
-                document.getElementById('loading').innerText = "Sincronizando...";
                 const resG = await fetch(`${API_URL}?sheet=Hoja1`);
-                const datosG = await resG.json();
-                
-                // Agregamos el índice real de la fila (SheetDB usa 0 para la fila 2 de Excel)
-                todosLosGastos = Array.isArray(datosG) ? datosG.map((g, index) => ({...g, rowIndex: index})) : [];
+                todosLosGastos = await resG.json();
 
                 const resP = await fetch(`${API_URL}?sheet=Hoja2`);
                 const presuData = await resP.json();
 
                 if (presuData && presuData.length > 0) {
                     const presuInicial = parseFloat(String(presuData[0].presupuesto).replace(',', '.')) || 0;
-                    const totalGastado = todosLosGastos.reduce((acc, g) => {
-                        const valor = parseFloat(String(g.monto).replace(',', '.'));
-                        return acc + (isNaN(valor) ? 0 : valor);
-                    }, 0);
-
+                    const totalGastado = todosLosGastos.reduce((acc, g) => acc + (parseFloat(String(g.monto).replace(',', '.')) || 0), 0);
                     const saldoActual = presuInicial - totalGastado;
+                    
                     const hoy = new Date();
                     const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
                     const diasRestantes = (ultimoDia - hoy.getDate()) + 1;
@@ -109,9 +102,7 @@
                     document.getElementById('loading').innerText = "Conectado";
                     renderHistorial(todosLosGastos);
                 }
-            } catch (e) { 
-                document.getElementById('loading').innerText = "Error de carga"; 
-            }
+            } catch (e) { document.getElementById('loading').innerText = "Error de carga"; }
         }
 
         async function agregarGasto() {
@@ -120,30 +111,29 @@
             if(tienda === 'Otros') tienda = document.getElementById('otroTienda').value;
             if(!monto || !tienda) return alert("Faltan datos");
 
+            const nuevoGasto = {
+                data: [{
+                    fecha: new Date().toLocaleDateString('es-AR'),
+                    monto: monto,
+                    tienda: tienda,
+                    mes: new Date().getMonth() + 1,
+                    id: Date.now() // ESTO ES EL ID ÚNICO
+                }]
+            };
+
             document.getElementById('loading').innerText = "Guardando...";
             await fetch(`${API_URL}?sheet=Hoja1`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ data: [{
-                    fecha: new Date().toLocaleDateString('es-AR'),
-                    monto: monto,
-                    tienda: tienda,
-                    mes: new Date().getMonth() + 1
-                }]})
+                body: JSON.stringify(nuevoGasto)
             });
             location.reload();
         }
 
         function renderHistorial(datos) {
             const div = document.getElementById('listaGastos');
-            if (datos.length === 0) {
-                div.innerHTML = "<p style='color:#888'>No hay movimientos</p>";
-                return;
-            }
-            div.innerHTML = '';
-            // Invertimos el array para ver lo más nuevo arriba, pero manteniendo el rowIndex correcto
+            div.innerHTML = datos.length ? '' : "<p style='color:#888'>No hay movimientos</p>";
             [...datos].reverse().slice(0, 15).forEach(g => {
-                const m = parseFloat(String(g.monto).replace(',', '.')) || 0;
                 div.innerHTML += `
                     <div class="gasto-item">
                         <div class="gasto-info">
@@ -151,40 +141,29 @@
                             <span class="gasto-fecha">${g.fecha}</span>
                         </div>
                         <div style="display:flex; align-items:center;">
-                            <span class="gasto-monto">-$${m.toLocaleString('es-AR')}</span>
-                            <span class="delete-icon" onclick="eliminarGasto(${g.rowIndex}, '${g.tienda}', ${m})">🗑️</span>
+                            <span class="gasto-monto">-$${(parseFloat(g.monto)).toLocaleString('es-AR')}</span>
+                            <span class="delete-icon" onclick="eliminarGasto('${g.id}')">🗑️</span>
                         </div>
                     </div>`;
             });
         }
 
-        async function eliminarGasto(index, tienda, monto) {
-            if(!confirm(`¿Eliminar solo este gasto de $${monto} en ${tienda}?`)) return;
+        async function eliminarGasto(id) {
+            if(!id || id === "undefined") return alert("Este gasto viejo no tiene ID. Borralo desde el Excel.");
+            if(!confirm("¿Eliminar este gasto?")) return;
 
-            document.getElementById('loading').innerText = "Eliminando fila...";
-
+            document.getElementById('loading').innerText = "Eliminando...";
             try {
-                // EXPLICACIÓN: SheetDB permite borrar por índice de fila. 
-                // Esto es 100% preciso y NO borra duplicados en otros lados.
-                const res = await fetch(`${API_URL}/all/${index}?sheet=Hoja1`, {
-                    method: 'DELETE'
-                });
-
-                if(res.ok) {
-                    location.reload();
-                } else {
-                    alert("Error al borrar. Intenta recargar la página.");
-                    location.reload();
-                }
-            } catch (e) {
-                alert("Error de conexión.");
-            }
+                // Borramos usando la columna ID que creamos
+                const res = await fetch(`${API_URL}/id/${id}?sheet=Hoja1`, { method: 'DELETE' });
+                if(res.ok) location.reload();
+                else alert("Error al borrar");
+            } catch (e) { alert("Error de conexión"); }
         }
 
         async function editarPresupuesto() {
             const nuevoP = prompt("Nuevo presupuesto mensual:");
             if (nuevoP) {
-                document.getElementById('loading').innerText = "Actualizando...";
                 await fetch(`${API_URL}/id/1?sheet=Hoja2`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
@@ -195,27 +174,23 @@
         }
 
         function exportarExcel() {
-            if(todosLosGastos.length === 0) return alert("No hay datos");
             let csv = "\ufeffFecha,Monto,Tienda,Mes\n";
             todosLosGastos.forEach(g => { csv += `${g.fecha},${g.monto},${g.tienda},${g.mes}\n`; });
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `Resumen_Gastos.csv`;
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            link.download = `Gastos.csv`;
             link.click();
         }
 
         async function cerrarMesYReiniciar() {
-            if(confirm("Se bajará el reporte y se borrarán todos los gastos. ¿Continuar?")) {
+            if(confirm("Se borrarán TODOS los datos. ¿Continuar?")) {
                 exportarExcel();
-                document.getElementById('loading').innerText = "Vaciando...";
                 await fetch(`${API_URL}/all?sheet=Hoja1`, { method: 'DELETE' });
                 location.reload();
             }
         }
 
         function toggleOtros(sel) { document.getElementById('otroTienda').style.display = (sel.value === 'Otros') ? 'block' : 'none'; }
-
         cargarDatos();
     </script>
 </body>
